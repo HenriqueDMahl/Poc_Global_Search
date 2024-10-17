@@ -1,0 +1,44 @@
+spring:
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 15MB
+  application:
+    name: GlobalSearchService
+  profiles:
+    active: dev
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  data:
+    mongodb:
+      auto-index-creation: true
+  task:
+    scheduling:
+      shutdown:
+        await-termination: true
+        await-termination-period: 60s
+    execution:
+      shutdown:
+        await-termination: true
+        await-termination-period: 60s
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%t] %-5level %logger{36} - %msg%n"
+
+server:
+  shutdown: graceful
+
+---
+spring:
+  config:
+    activate:
+      on-profile: dev
+  data:
+    mongodb:
+      database: global-search-service
+      host: localhost
+      port: 27017
+
+server:
+  port: 8080
