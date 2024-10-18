@@ -32,28 +32,28 @@ public class SearchImpl implements SearchService {
 	 */
 	@Override
 	public SearchResponse find(SearchVO searchVO) {
-
 		long startTime = System.currentTimeMillis();
 
 		List<String> tokens = tokenUtils.getTokens(searchVO.getTermToSearch());
-		int[] filesIdsIntercection = null;
+		int[] filesIdsIntersection;
 
 		String searchType = searchVO.getSearchType();
 
-		if (SearchTypes.ANY.toString().equalsIgnoreCase(searchType))
-			filesIdsIntercection = anyOrderSearch(tokens);
-		else if (SearchTypes.EXACT.toString().equalsIgnoreCase(searchType))
-			filesIdsIntercection = exactSearch(tokens);
-		else
-			log.error("Tipo de busca não suportado: " + searchType);
-
+		switch (SearchTypes.valueOf(searchType.toUpperCase())) {
+			case ANY -> filesIdsIntersection = anyOrderSearch(tokens);
+			case EXACT -> filesIdsIntersection = exactSearch(tokens);
+			default -> {
+				log.error("Tipo de busca não suportado: " + searchType);
+				return SearchResponse.builder().searchResult(new int[0]).build();
+			}
+		}
 
 		long endTime = System.currentTimeMillis();
 		long processingTime = endTime - startTime;
 
 		log.info("Processing time for method find using the " + searchType + " type search: " + processingTime + "ms");
 
-		return SearchResponse.builder().searchResult(filesIdsIntercection).build();
+		return SearchResponse.builder().searchResult(filesIdsIntersection).build();
 	}
 
 	/**
@@ -70,7 +70,11 @@ public class SearchImpl implements SearchService {
 				.stream()
 				.collect(Collectors.toMap(Tokens::getToken, Function.identity()));
 
-		Set<Integer> filesIdsIntersection = new HashSet<>(tokensMap.get(tokens.get(0)).getFilesIds().keySet());
+		Tokens firstToken = tokensMap.get(tokens.get(0));
+		if (firstToken == null)
+			return new int[0];
+
+		Set<Integer> filesIdsIntersection = new HashSet<>(firstToken.getFilesIds().keySet());
 
 		for (int i = 1; i < tokens.size(); i++) {
 			String token = tokens.get(i);
@@ -95,53 +99,6 @@ public class SearchImpl implements SearchService {
 		}
 
 		return filesIdsIntersection.stream().mapToInt(i -> i).toArray();
-	}
-
-	private int[] exactSearchOld(List<String> tokens) {
-
-		Set<Integer> filesIdsIntercection = null;
-		String lookAheadStringFromSearch;
-
-		Map<String, Tokens> tokensMap = ocrRepository.findAllById(tokens)
-				.stream()
-				.collect(Collectors.toMap(Tokens::getToken, Function.identity()));
-
-		for (int i = 0; i < tokens.size(); i++) {
-			String token = tokens.get(i);
-			Tokens filesIds = tokensMap.get(token);
-
-			if (filesIds == null) {
-				// Se não encontrar o token, retorna um array vazio, pois não existe filesIds para a busca
-				return new int[0];
-			}
-
-			HashMap<Integer, List<String>> filesIdsMap = filesIds.getFilesIds();
-
-			if (filesIdsIntercection == null) {
-				filesIdsIntercection = filesIdsMap.keySet();
-			} else {
-
-				//Se o token atual não for o último, pega o próximo token
-				if (i + LOOK_AHEAD < tokens.size())
-					lookAheadStringFromSearch = tokens.get(i + LOOK_AHEAD);
-				else
-					lookAheadStringFromSearch = "";
-
-				filesIdsIntercection = getIntersection(filesIdsIntercection, filesIdsMap.keySet());
-
-				// Valida se o lookAheadStringFromSearch está contido no lookAheadStringFromFile
-				validateWithLookAhead(filesIdsIntercection, lookAheadStringFromSearch, filesIdsMap);
-
-				//Se o resultado da interseção for menor ou igual 1, não é necessário continuar a busca
-				if (filesIdsIntercection.size() <= 1)
-					break;
-			}
-		}
-
-		if (filesIdsIntercection == null)
-			return new int[0];
-
-		return filesIdsIntercection.stream().mapToInt(i -> i).toArray();
 	}
 
 	/**
@@ -172,6 +129,9 @@ public class SearchImpl implements SearchService {
 					if (filesIdsIntersection.size() <= 1)
 						break;
 				}
+			} else {
+				// Se não encontrar o token, retorna um array vazio, pois não existe filesIds para a busca
+				return new int[0];
 			}
 		}
 
@@ -179,19 +139,6 @@ public class SearchImpl implements SearchService {
 			return new int[0];
 
 		return filesIdsIntersection.stream().mapToInt(i -> i).toArray();
-	}
-
-	/**
-	 * Obtém a interseção de dois conjuntos de IDs de arquivos.
-	 *
-	 * @param array1 O primeiro conjunto de IDs de arquivos.
-	 * @param array2 O segundo conjunto de IDs de arquivos.
-	 * @return Um conjunto que representa a interseção dos dois conjuntos de IDs de arquivos.
-	 */
-	private Set<Integer> getIntersection(Set<Integer> array1, Set<Integer> array2) {
-		Set<Integer> intersection = new HashSet<>(array1);
-		intersection.retainAll(array2);
-		return intersection;
 	}
 
 	/**

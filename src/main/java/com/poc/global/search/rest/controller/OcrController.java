@@ -22,12 +22,37 @@ public class OcrController {
 	@Autowired
 	private OcrService ocrService;
 
+	/**
+	 * Processa um objeto OcrVO e extrai os tokens.
+	 * Caso o arquivo seja maior que o tamanho máximo permitido (5 MB), divide o arquivo em partes menores e processa cada parte.
+	 *
+	 * Essa chamada é feita para clientes Cloud.
+	 *
+	 * @param ocrVO O objeto que contém o arquivo e o ID do arquivo.
+	 */
 	@PostMapping("/process")
 	@ResponseStatus(code = HttpStatus.OK)
 	public void createOcrForDocuments(@Valid @RequestBody OcrVO ocrVO) {
-		ocrService.process(ocrVO);
+		if (ocrVO.getFile().isEmpty()) {
+			throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File is empty");
+		}
+
+		try {
+			ocrService.process(ocrVO);
+		} catch (IOException e) {
+			throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error processing file", e);
+		}
 	}
 
+	/**
+	 * Processa um arquivo MultipartFile e extrai os tokens.
+	 * Caso o arquivo seja maior que o tamanho máximo permitido (5 MB), divide o arquivo em partes menores e processa cada parte.
+	 *
+	 * Essa chamada é feita para clientes On-Premise.
+	 *
+	 * @param file O arquivo a ser processado.
+	 * @param fileId O ID do arquivo.
+	 */
 	@PostMapping("/upload")
 	@ResponseStatus(code = HttpStatus.OK)
 	public void uploadTextFile(@RequestParam("file") MultipartFile file, @RequestParam("fileId") int fileId) {
