@@ -23,7 +23,9 @@ import static com.poc.global.search.utils.Constants.LOOK_AHEAD;
 public class OcrImpl implements OcrService {
 
 	private OcrRepository ocrRepository;
+	private TokenUtils tokenUtils;
 
+	// Tamanho máximo permitido para processamento de arquivos
 	private static final int MAX_SIZE = 5 * 1024 * 1024; // 5MB
 
 	/**
@@ -36,40 +38,28 @@ public class OcrImpl implements OcrService {
 	@Override
 	public void process(MultipartFile file, int fileId) throws IOException {
 		long size = file.getSize();
-		if (size <= MAX_SIZE) {
-			processFile(file.getInputStream(), fileId);
-		} else {
-			final byte[] buffer = new byte[MAX_SIZE];
-			InputStream in = file.getInputStream();
-			int dataRead = in.read(buffer);
-			while (dataRead > -1) {
-				processFile(new ByteArrayInputStream(buffer, 0, dataRead), fileId);
-				dataRead = in.read(buffer);
-			}
-		}
-	}
 
-	private void processFile(InputStream file, int fileId) throws IOException {
-		StringBuilder stringBuilder = new StringBuilder();
-		String line;
-
-		try (BufferedReader br = new BufferedReader(new InputStreamReader(file, StandardCharsets.UTF_8))) {
-			while ((line = br.readLine()) != null) {
-				stringBuilder.append(line);
-				stringBuilder.append(System.lineSeparator());
-			}
-		}
-
-		process(stringBuilder.toString(), fileId);
+		if (size <= MAX_SIZE)
+			processWithInputStream(file.getInputStream(), fileId);
+		else
+			splitProcess(file.getInputStream(), fileId);
 	}
 
 	/**
 	 * Processa um objeto OcrVO e extrai os tokens.
+	 * Caso o arquivo seja maior que o tamanho máximo permitido, divide o arquivo em partes menores e processa cada parte.
 	 *
 	 * @param ocrVO O objeto que contém o arquivo e o ID do arquivo.
 	 */
-	public void process(OcrVO ocrVO) {
-		process(ocrVO.getFile(), ocrVO.getFileId());
+	public void process(OcrVO ocrVO) throws IOException {
+		String file = ocrVO.getFile();
+		int fileId = ocrVO.getFileId();
+		byte[] bytes = file.getBytes(StandardCharsets.UTF_8);
+
+		if (bytes.length > MAX_SIZE)
+			splitProcess(new ByteArrayInputStream(bytes), fileId);
+		else
+			process(file, fileId);
 	}
 
 	/**
@@ -78,11 +68,10 @@ public class OcrImpl implements OcrService {
 	 * @param file A string a ser processada.
 	 * @param fileId O ID do arquivo.
 	 */
-	public void process(String file, int fileId) {
+	private void process(String file, int fileId) {
 
 		long startTime = System.currentTimeMillis();
 
-		TokenUtils tokenUtils = new TokenUtils();
 		List<String> tokens = tokenUtils.getTokens(file);
 
 		Map<String, Tokens> tokenEntities = ocrRepository.findAllById(tokens)
@@ -106,6 +95,44 @@ public class OcrImpl implements OcrService {
 		long processingTime = endTime - startTime;
 
 		log.info("Processing time for method process: " + processingTime + "ms");
+	}
+
+	/**
+	 * Caso o arquivo seja maior que o tamanho máximo permitido, divide o arquivo em partes menores e processa cada parte.
+	 *
+	 * @param in O InputStream a ser processado.
+	 * @param fileId O ID do arquivo.
+	 * @throws IOException Se ocorrer um erro ao ler o InputStream.
+	 */
+	private void splitProcess(InputStream in, int fileId) throws IOException {
+		final byte[] buffer = new byte[MAX_SIZE];
+		int dataRead;
+
+		try (BufferedInputStream bis = new BufferedInputStream(in)) {
+			while ((dataRead = bis.read(buffer)) != -1) {
+				processWithInputStream(new ByteArrayInputStream(buffer, 0, dataRead), fileId);
+			}
+		}
+	}
+
+	/**
+	 * Processa um InputStream e extrai os tokens.
+	 *
+	 * @param file O InputStream a ser processado.
+	 * @param fileId O ID do arquivo.
+	 * @throws IOException Se ocorrer um erro ao ler o InputStream.
+	 */
+	private void processWithInputStream(InputStream file, int fileId) throws IOException {
+		StringBuilder stringBuilder = new StringBuilder();
+		String line;
+
+		try (BufferedReader br = new BufferedReader(new InputStreamReader(file, StandardCharsets.UTF_8))) {
+			while ((line = br.readLine()) != null) {
+				stringBuilder.append(line).append(' ');
+			}
+		}
+
+		process(stringBuilder.toString(), fileId);
 	}
 
 	/**

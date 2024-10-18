@@ -7,8 +7,7 @@ import java.io.IOException;
 
 public interface OcrService {
 
-	void process(OcrVO ocrVO);
-	void process(String file, int fileId);
+	void process(OcrVO ocrVO) throws IOException;
 
 	void process(MultipartFile file, int fileId) throws IOException;
 }
